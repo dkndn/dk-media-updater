@@ -169,7 +169,7 @@ function dkmu_add_check_updates_link($links, $file) {
     }
 
     // Admin-URL für den Update-Check
-    $check_updates_url = admin_url('plugins.php?action=check_plugin_updates&plugin_slug=' . rawurlencode(DKMP_PLUGIN_SLUG));
+    $check_updates_url = admin_url('plugins.php?action=check_plugin_updates&plugin_slug=' . rawurlencode(DKMU_PLUGIN_SLUG));
 
     // Link erstellen
     $check_updates_link = sprintf(
