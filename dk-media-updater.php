@@ -4,7 +4,7 @@
 * Plugin Name: DK Media GmbH → Updater
 * Plugin URI: https://www.daniel-knoden.de/
 * Description: Acts as an proxy server to allow or disallow plugin updates.
-* Version: 0.5
+* Version: 0.6
 * Requires at least: 5.6
 * Requires PHP: 7.0
 * Author: Daniel Knoden
@@ -124,7 +124,25 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
     }
 
     // Generiere Download-URL für ZIP-Archiv des Branches
-    $download_url = 'https://github.com/' . $githubUser . '/' . $githubRepo . '/archive/' . $githubBranch . '.zip';
+    // $download_url = 'https://github.com/' . $githubUser . '/' . $githubRepo . '/archive/' . $githubBranch . '.zip'; // V1
+    $download_url = 'https://api.github.com/repos/' . $githubUser . '/' . $githubRepo . '/zipball/' . $githubBranch; // V2
+
+    $response = wp_remote_get(
+        $download_url,
+        [
+            'headers' => [
+                'Authorization' => 'token ' . $access_token,
+                'User-Agent'    => 'Update-Server',
+            ],
+        ]
+    );
+
+    if (is_wp_error($response)) {
+        return new WP_REST_Response(['error' => 'Error connecting to GitHub for download URL'], 500);
+    }
+
+    // Erfolgreicher Abruf der URL für das ZIP
+    $download_url = wp_remote_retrieve_body($response);
 
     // Update-Informationen zurückgeben
     return new WP_REST_Response([
