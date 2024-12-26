@@ -25,8 +25,9 @@ define( 'DKMU_PLUGIN_SLUG', 'dk-media-updater' );
 define( 'DKMU_UPDATE_SERVER_URL', 'https://apiwp.daniel-knoden.de/wp-json/dkm-plugins/v1/update?plugin_slug=' . DKMU_PLUGIN_SLUG );
 
 // Add plugin update routines
-add_filter('pre_set_site_transient_update_plugins', 'dkmu_check_plugin_updates_from_server' );
+add_filter( 'pre_set_site_transient_update_plugins', 'dkmu_check_plugin_updates_from_server' );
 add_filter( 'plugin_row_meta', 'dkmu_add_check_updates_link', 10, 2);
+add_action( 'admin_init', 'dkmu_handle_check_updates_action' );
 
 // Endpoint registrieren
 add_action('rest_api_init', function () {
@@ -136,12 +137,36 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
     ]);
 }
 
+function dkmu_handle_check_updates_action() {
+    if (!isset($_GET['action'], $_GET['plugin_slug']) || $_GET['action'] !== 'dkmu_check_plugin_updates') {
+        return;
+    }
+
+    $plugin_slug = sanitize_text_field($_GET['plugin_slug']);
+    if ($plugin_slug !== DKMU_PLUGIN_SLUG) {
+        wp_die(__('Invalid plugin slug.', 'dk-media-updater'));
+    }
+
+    // Forcierten Update-Check durchführen
+    delete_site_transient('update_plugins');
+    wp_update_plugins();
+
+    // Benutzer zurückleiten mit Erfolgsmeldung
+    wp_redirect(admin_url('plugins.php?checked_plugin=' . rawurlencode($plugin_slug) . '&update_checked=true'));
+    exit;
+}
+
 function dkmu_check_plugin_updates_from_server($transient){
     if (empty($transient->checked)) {
         return $transient;
     }
 
     $plugin_file = plugin_basename(__FILE__);
+
+    if (!isset($transient->checked[$plugin_file])) {
+        return $transient; // Plugin ist nicht registriert
+    }
+    
     $current_version = $transient->checked[$plugin_file];
 
     // API-Request ausführen
@@ -173,7 +198,7 @@ function dkmu_add_check_updates_link($links, $file) {
     }
 
     // Admin-URL für den Update-Check
-    $check_updates_url = admin_url('plugins.php?action=check_plugin_updates&plugin_slug=' . rawurlencode(DKMU_PLUGIN_SLUG));
+    $check_updates_url = admin_url('plugins.php?action=dkmu_check_plugin_updates&plugin_slug=' . rawurlencode(DKMU_PLUGIN_SLUG));
 
     // Link erstellen
     $check_updates_link = sprintf(
