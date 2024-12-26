@@ -4,7 +4,7 @@
 * Plugin Name: DK Media GmbH → Updater
 * Plugin URI: https://www.daniel-knoden.de/
 * Description: Acts as an proxy server to allow or disallow plugin updates.
-* Version: 0.6
+* Version: 0.7
 * Requires at least: 5.6
 * Requires PHP: 7.0
 * Author: Daniel Knoden
