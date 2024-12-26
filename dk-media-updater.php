@@ -62,11 +62,16 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
         ],
     ];
 
-    $access_token = defined(DKMU_GITHUB_ACCESS_TOKEN) ? DKMU_GITHUB_ACCESS_TOKEN : '';
-
     // Validierung der Anfrage
     if (!$plugin_slug || !array_key_exists($plugin_slug, $updater_config) ) {
         return new WP_REST_Response(['error' => 'Invalid plugin slug'], 400);
+    }
+
+    $access_token = defined('DKMU_GITHUB_ACCESS_TOKEN') ? DKMU_GITHUB_ACCESS_TOKEN : '';
+
+    // Validierung der Anfrage
+    if (!$access_token) {
+        return new WP_REST_Response(['error' => 'GitHub Access Token not provided'], 400);
     }
 
     $githubUser     = $updater_config[$plugin_slug]['githubUserName'];
