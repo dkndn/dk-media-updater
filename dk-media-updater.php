@@ -20,6 +20,14 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Constants for this plugin
+define( 'DKMU_PLUGIN_SLUG', 'dk-media-updater' );
+define( 'DKMU_UPDATE_SERVER_URL', 'https://apiwp.daniel-knoden.de/wp-json/dkm-plugins/v1/update?plugin_slug=' . DKMU_PLUGIN_SLUG );
+
+// Add plugin update routines
+add_filter('pre_set_site_transient_update_plugins', 'dkmu_check_plugin_updates_from_server' );
+add_filter( 'plugin_row_meta', 'dkmu_add_check_updates_link', 10, 2);
+
 // Endpoint registrieren
 add_action('rest_api_init', function () {
     register_rest_route('dkm-plugins/v1', '/update', [
@@ -120,5 +128,58 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
         'slug'          => $plugin_slug,
         'tested'        => $plugin_headers['RequiresWP'] ?? '6.4',
         'requires'      => $plugin_headers['RequiresPHP'] ?? '7.0',
+        'all'           => $plugin_headers,
     ]);
+}
+
+function dkmu_check_plugin_updates_from_server($transient){
+    if (empty($transient->checked)) {
+        return $transient;
+    }
+
+    $plugin_file = plugin_basename(__FILE__);
+    $current_version = $transient->checked[$plugin_file];
+
+    // API-Request ausführen
+    $response = wp_remote_get(DKMU_UPDATE_SERVER_URL);
+
+    if (is_wp_error($response)) {
+        return $transient; // Fehler, keine Updates
+    }
+
+    $update_data = json_decode(wp_remote_retrieve_body($response), true);
+
+    // Überprüfen, ob ein Update verfügbar ist
+    if (!empty($update_data['version']) && version_compare($update_data['version'], $current_version, '>')) {
+        $transient->response[$plugin_file] = (object) [
+            'slug'          => DKMU_PLUGIN_SLUG,
+            'new_version'   => $update_data['version'],
+            'package'       => $update_data['download_url'], // Download-URL für das Update
+            'url'           => 'https://your-update-server.com', // Info-Seite
+        ];
+    }
+
+    return $transient;
+}
+
+function dkmu_add_check_updates_link($links, $file) {
+    // Prüfen, ob wir unser Plugin bearbeiten
+    if ($file !== plugin_basename(__FILE__)) {
+        return $links;
+    }
+
+    // Admin-URL für den Update-Check
+    $check_updates_url = admin_url('plugins.php?action=check_plugin_updates&plugin_slug=' . rawurlencode(DKMP_PLUGIN_SLUG));
+
+    // Link erstellen
+    $check_updates_link = sprintf(
+        '<a href="%s">%s</a>',
+        esc_url($check_updates_url),
+        __('Check for Updates', 'dk-media-updater')
+    );
+
+    // Link hinzufügen
+    $links[] = $check_updates_link;
+
+    return $links;
 }
