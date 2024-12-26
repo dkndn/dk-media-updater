@@ -4,7 +4,7 @@
 * Plugin Name: DK Media GmbH → Updater
 * Plugin URI: https://www.daniel-knoden.de/
 * Description: Acts as an proxy server to allow or disallow plugin updates.
-* Version: 0.1
+* Version: 0.2
 * Requires at least: 5.6
 * Requires PHP: 7.0
 * Author: Daniel Knoden
@@ -30,12 +30,7 @@ add_action('rest_api_init', function () {
 });
 
 // Manual Definitions
-define( 'DKMP_SLUG', 'dk-media-pro' );
-define( 'DKMU_GITHUB_USERNAME', 'dkndn' );
-define( 'DKMU_GITHUB_REPO_NAME', 'dk-media-pro' );
-define( 'DKMU_GITHUB_BRANCH', 'main' );
 define( 'DKMU_GITHUB_ACCESS_TOKEN', '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' );
-
 
 /**
  * Sends a request to the current GitHub repo.
@@ -49,16 +44,33 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
 
     $plugin_slug = $request->get_param('plugin_slug');
 
+    $updater_config = [
+        'dk-media-pro' => [
+            'githubUserName' => 'dkndn',
+            'githubRepoName' => 'dk-media-pro',
+            'githubBranchName' => 'main',
+        ],
+        'dk-media-updater' => [
+            'githubUserName' => 'dkndn',
+            'githubRepoName' => 'dk-media-updater',
+            'githubBranchName' => 'main',
+        ],
+    ];
+
     // Validierung der Anfrage
-    if (!$plugin_slug || $plugin_slug !== DKMP_SLUG) {
+    if (!$plugin_slug || !array_key_exists($plugin_slug, $updater_config) ) {
         return new WP_REST_Response(['error' => 'Invalid plugin slug'], 400);
     }
 
+    $githubUser     = $updater_config[$plugin_slug]['githubUserName'];
+    $githubRepo     = $updater_config[$plugin_slug]['githubRepoName'];
+    $githubBranch   = $updater_config[$plugin_slug]['githubBranchName'];
+    $filename       = $plugin_slug . '.php';
+
     // RAW GITHUB Call
-    $filename = DKMP_SLUG . '.php';
-    $api_url = 'https://raw.githubusercontent.com/' . DKMU_GITHUB_USERNAME . '/' . DKMU_GITHUB_REPO_NAME . '/' . DKMU_GITHUB_BRANCH .'/' . $filename;
+    $api_url = 'https://raw.githubusercontent.com/' . $githubUser . '/' . $githubRepo . '/' . $githubBranch .'/' . $filename;
     
-    // Datei abrufen
+    // Datei abrufend
     $response = wp_remote_get(
         $api_url,
         [
@@ -99,14 +111,14 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
     }
 
     // Generiere Download-URL für ZIP-Archiv des Branches
-    $download_url = 'https://github.com/' . DKMU_GITHUB_USERNAME . '/' . DKMU_GITHUB_REPO_NAME . '/archive/' . DKMU_GITHUB_BRANCH . '.zip';
+    $download_url = 'https://github.com/' . $githubUser . '/' . $githubRepo . '/archive/' . $githubBranch . '.zip';
 
     // Update-Informationen zurückgeben
     return new WP_REST_Response([
-        'version' => $plugin_headers['Version'],
-        'download_url' => $download_url,
-        'slug' => $plugin_slug,
-        'tested' => $plugin_headers['RequiresWP'] ?? '6.4',
-        'requires' => $plugin_headers['RequiresPHP'] ?? '5.8',
+        'version'       => $plugin_headers['Version'],
+        'download_url'  => $download_url,
+        'slug'          => $plugin_slug,
+        'tested'        => $plugin_headers['RequiresWP'] ?? '6.4',
+        'requires'      => $plugin_headers['RequiresPHP'] ?? '7.0',
     ]);
 }
