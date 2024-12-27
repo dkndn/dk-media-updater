@@ -31,12 +31,104 @@ add_action( 'admin_init', 'dkmu_handle_check_updates_action' );
 
 // Endpoint registrieren
 add_action('rest_api_init', function () {
+    // Checks if updates are available
     register_rest_route('dkm-plugins/v1', '/update', [
         'methods' => 'GET',
         'callback' => 'dkmu_handle_update_request',
         'permission_callback' => '__return_true',
     ]);
+
+    // Acts as proxy URL so clients don't download from GitHub directly
+    register_rest_route('dkm-plugins/v1', '/download-zip', [
+        'methods' => 'GET',
+        'callback' => 'dkmu_handle_download_zip_request',
+        'permission_callback' => '__return_true',
+    ]);
 });
+
+/** HELPER AND CONFIG FUNCTIONS **/
+function dkmu_get_plugin_updater_config(){
+    return [
+        'dk-media-pro' => [
+            'githubUserName' => 'dkndn',
+            'githubRepoName' => 'dk-media-pro',
+            'githubBranchName' => 'main',
+        ],
+        'dk-media-updater' => [
+            'githubUserName' => 'dkndn',
+            'githubRepoName' => 'dk-media-updater',
+            'githubBranchName' => 'main',
+        ]
+    ];
+}
+
+/**
+ * Holt die ZIP-Datei von GitHub und gibt sie an den Client zurück
+ *
+ * @param WP_REST_Request $request Die Anfrage
+ * @return WP_REST_Response
+ */
+function dkmu_handle_download_zip_request(WP_REST_Request $request) {
+    $plugin_slug = $request->get_param('plugin_slug');
+
+    $updater_config = dkmu_get_plugin_updater_config();
+
+    // Validierung der Anfrage
+    if (!$plugin_slug || !array_key_exists($plugin_slug, $updater_config) ) {
+        return new WP_REST_Response(['error' => 'Invalid plugin slug'], 400);
+    }
+
+    $access_token = dkmu_get_access_token();
+
+    // Validierung der Anfrage
+    if (!$access_token) {
+        return new WP_REST_Response(['error' => 'GitHub Access Token not provided'], 400);
+    }
+
+    $githubUser     = $updater_config[$plugin_slug]['githubUserName'];
+    $githubRepo     = $updater_config[$plugin_slug]['githubRepoName'];
+    $githubBranch   = $updater_config[$plugin_slug]['githubBranchName'];
+
+    // GitHub ZIP-URL für den Branch
+    $zip_url = "https://api.github.com/repos/$githubUser/$githubRepo/zipball/$githubBranch";
+
+    // GitHub API-Aufruf vorbereiten
+    $response = wp_remote_get(
+        $zip_url,
+        [
+            'headers' => [
+                'Authorization' => "token $access_token",
+                'User-Agent' => 'Update-Server',
+            ],
+        ]
+    );
+
+    if (is_wp_error($response)) {
+        return new WP_REST_Response(['error' => 'Error connecting to GitHub'], 500);
+    }
+
+    $http_code = wp_remote_retrieve_response_code($response);
+
+    // Sicherstellen, dass der API-Call erfolgreich war
+    if ($http_code !== 200) {
+        return new WP_REST_Response(['error' => 'Failed to fetch ZIP file'], $http_code);
+    }
+
+    // Dateiinhalt abrufen
+    $file_content = wp_remote_retrieve_body($response);
+
+    // Header für die Rückgabe der Datei setzen
+    header('Content-Type: application/zip');
+    header('Content-Disposition: attachment; filename="' . $plugin_slug . '.zip"');
+    header('Content-Length: ' . strlen($file_content));
+
+    echo $file_content;
+    exit; // Beende den weiteren WordPress-Output
+}
+
+function dkmu_get_access_token(){
+    return defined('DKMU_GITHUB_ACCESS_TOKEN') ? DKMU_GITHUB_ACCESS_TOKEN : '';
+}
 
 /**
  * Sends a request to the current GitHub repo.
@@ -50,25 +142,14 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
 
     $plugin_slug = $request->get_param('plugin_slug');
 
-    $updater_config = [
-        'dk-media-pro' => [
-            'githubUserName' => 'dkndn',
-            'githubRepoName' => 'dk-media-pro',
-            'githubBranchName' => 'main',
-        ],
-        'dk-media-updater' => [
-            'githubUserName' => 'dkndn',
-            'githubRepoName' => 'dk-media-updater',
-            'githubBranchName' => 'main',
-        ],
-    ];
+    $updater_config = dkmu_get_plugin_updater_config();
 
     // Validierung der Anfrage
     if (!$plugin_slug || !array_key_exists($plugin_slug, $updater_config) ) {
         return new WP_REST_Response(['error' => 'Invalid plugin slug'], 400);
     }
 
-    $access_token = defined('DKMU_GITHUB_ACCESS_TOKEN') ? DKMU_GITHUB_ACCESS_TOKEN : '';
+    $access_token = dkmu_get_access_token();
 
     // Validierung der Anfrage
     if (!$access_token) {
@@ -124,25 +205,7 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
     }
 
     // Generiere Download-URL für ZIP-Archiv des Branches
-    // $download_url = 'https://github.com/' . $githubUser . '/' . $githubRepo . '/archive/' . $githubBranch . '.zip'; // V1
-    $download_url = 'https://api.github.com/repos/' . $githubUser . '/' . $githubRepo . '/zipball/' . $githubBranch; // V2
-
-    $response = wp_remote_get(
-        $download_url,
-        [
-            'headers' => [
-                'Authorization' => 'token ' . $access_token,
-                'User-Agent'    => 'Update-Server',
-            ],
-        ]
-    );
-
-    if (is_wp_error($response)) {
-        return new WP_REST_Response(['error' => 'Error connecting to GitHub for download URL'], 500);
-    }
-
-    // Erfolgreicher Abruf der URL für das ZIP
-    $download_url = wp_remote_retrieve_body($response);
+    $download_url = rest_url("dkm-plugins/v1/download-zip?plugin_slug=$plugin_slug");
 
     // Update-Informationen zurückgeben
     return new WP_REST_Response([
@@ -153,25 +216,6 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
         'requires'      => $plugin_headers['RequiresPHP'] ?? '7.0',
         'all'           => $plugin_headers,
     ]);
-}
-
-function dkmu_handle_check_updates_action() {
-    if (!isset($_GET['action'], $_GET['plugin_slug']) || $_GET['action'] !== 'check_plugin_updates') {
-        return;
-    }
-
-    $plugin_slug = sanitize_text_field($_GET['plugin_slug']);
-    if ($plugin_slug !== DKMU_PLUGIN_SLUG) {
-        return;
-    }
-
-    // Forcierten Update-Check durchführen
-    delete_site_transient('update_plugins');
-    wp_update_plugins();
-
-    // Benutzer zurückleiten mit Erfolgsmeldung
-    wp_redirect(admin_url('plugins.php?checked_plugin=' . rawurlencode($plugin_slug) . '&update_checked=true'));
-    exit;
 }
 
 function dkmu_check_plugin_updates_from_server($transient){
@@ -207,6 +251,26 @@ function dkmu_check_plugin_updates_from_server($transient){
     }
 
     return $transient;
+}
+
+/** CHECK MANUAL FOR UPDATES **/
+function dkmu_handle_check_updates_action() {
+    if (!isset($_GET['action'], $_GET['plugin_slug']) || $_GET['action'] !== 'check_plugin_updates') {
+        return;
+    }
+
+    $plugin_slug = sanitize_text_field($_GET['plugin_slug']);
+    if ($plugin_slug !== DKMU_PLUGIN_SLUG) {
+        return;
+    }
+
+    // Forcierten Update-Check durchführen
+    delete_site_transient('update_plugins');
+    wp_update_plugins();
+
+    // Benutzer zurückleiten mit Erfolgsmeldung
+    wp_redirect(admin_url('plugins.php?checked_plugin=' . rawurlencode($plugin_slug) . '&update_checked=true'));
+    exit;
 }
 
 function dkmu_add_check_updates_link($links, $file) {
