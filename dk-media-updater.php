@@ -4,7 +4,7 @@
 * Plugin Name: DK Media GmbH → Updater
 * Plugin URI: https://www.daniel-knoden.de/
 * Description: Acts as an proxy server to allow or disallow plugin updates.
-* Version: 0.7
+* Version: 0.8
 * Requires at least: 5.6
 * Requires PHP: 7.0
 * Author: Daniel Knoden
@@ -246,7 +246,7 @@ function dkmu_check_plugin_updates_from_server($transient){
             'slug'          => DKMU_PLUGIN_SLUG,
             'new_version'   => $update_data['version'],
             'package'       => $update_data['download_url'], // Download-URL für das Update
-            'url'           => 'https://your-update-server.com', // Info-Seite
+            'url'           => 'https://your-update-server2.com', // Info-Seite
         ];
     }
 
