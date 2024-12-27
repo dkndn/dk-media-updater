@@ -41,7 +41,7 @@ add_action('rest_api_init', function () {
     // Acts as proxy URL so clients don't download from GitHub directly
     register_rest_route('dkm-plugins/v1', '/download-zip', [
         'methods' => 'GET',
-        'callback' => 'dkmu_handle_download_zip_request',
+        'callback' => 'dkmu_proxy_download_zip_request',
         'permission_callback' => '__return_true',
     ]);
 });
@@ -68,7 +68,7 @@ function dkmu_get_plugin_updater_config(){
  * @param WP_REST_Request $request Die Anfrage
  * @return WP_REST_Response
  */
-function dkmu_handle_download_zip_request(WP_REST_Request $request) {
+function dkmu_proxy_download_zip_request(WP_REST_Request $request) {
     $plugin_slug = $request->get_param('plugin_slug');
 
     $updater_config = dkmu_get_plugin_updater_config();
