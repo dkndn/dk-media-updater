@@ -4,7 +4,7 @@
 * Plugin Name: DK Media GmbH → Updater
 * Plugin URI: https://www.daniel-knoden.de/
 * Description: Acts as an proxy server to allow or disallow plugin updates.
-* Version: 0.8
+* Version: 0.9
 * Requires at least: 5.6
 * Requires PHP: 7.0
 * Author: Daniel Knoden
@@ -22,7 +22,6 @@ if (!defined('ABSPATH')) {
 
 // Constants for this plugin
 define( 'DKMU_PLUGIN_SLUG', 'dk-media-updater' );
-define( 'DKMU_UPDATE_SERVER_URL', 'https://apiwp.daniel-knoden.de/wp-json/dkm-plugins/v1/update?plugin_slug=' . DKMU_PLUGIN_SLUG );
 
 // Add plugin update routines
 add_filter( 'pre_set_site_transient_update_plugins', 'dkmu_check_plugin_updates_from_server' );
@@ -46,21 +45,26 @@ add_action('rest_api_init', function () {
     ]);
 });
 
-/** HELPER AND CONFIG FUNCTIONS **/
+/****************************************/
+/** START: HELPER AND CONFIG FUNCTIONS **/
+
 function dkmu_get_plugin_updater_config(){
-    return [
-        'dk-media-pro' => [
-            'githubUserName' => 'dkndn',
-            'githubRepoName' => 'dk-media-pro',
-            'githubBranchName' => 'main',
-        ],
-        'dk-media-updater' => [
-            'githubUserName' => 'dkndn',
-            'githubRepoName' => 'dk-media-updater',
-            'githubBranchName' => 'main',
-        ]
-    ];
+    // constant configured in wp-config.php
+    return defined('DKMU_PLUGIN_UPDATER_CONFIG') ? DKMU_PLUGIN_UPDATER_CONFIG : [];
 }
+
+function dkmu_get_access_token(){
+    // constant configured in wp-config.php
+    return defined('DKMU_GITHUB_ACCESS_TOKEN') ? DKMU_GITHUB_ACCESS_TOKEN : '';
+}
+
+function dkmu_get_update_server_url(){
+    // constant configured in wp-config.php
+    return defined('DKMU_PLUGIN_UPDATE_SERVER_URL') ? DKMU_PLUGIN_UPDATE_SERVER_URL : '';
+}
+
+/** END: HELPER AND CONFIG FUNCTIONS **/
+/**************************************/
 
 /**
  * Holt die ZIP-Datei von GitHub und gibt sie an den Client zurück
@@ -126,10 +130,6 @@ function dkmu_proxy_download_zip_request(WP_REST_Request $request) {
     exit; // Beende den weiteren WordPress-Output
 }
 
-function dkmu_get_access_token(){
-    return defined('DKMU_GITHUB_ACCESS_TOKEN') ? DKMU_GITHUB_ACCESS_TOKEN : '';
-}
-
 /**
  * Sends a request to the current GitHub repo.
  * It checks the version of the plugin.php main file.
@@ -181,8 +181,8 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
 
     $plugin_data = wp_remote_retrieve_body($response);
 
-    if (empty($plugin_data)) {
-        return new WP_REST_Response(['error' => "$filename not found"], 404);
+    if (empty($plugin_data) || wp_remote_retrieve_response_code($response) !== 200) {
+        return new WP_REST_Response(['error' => "$filename not found or access token no longer valid"], 404);
     }
 
     // Temporäre Datei erstellen
@@ -205,7 +205,11 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
     }
 
     // Generiere Download-URL für ZIP-Archiv des Branches
-    $download_url = rest_url("dkm-plugins/v1/download-zip?plugin_slug=$plugin_slug");
+    if( defined('DKMU_PLUGIN_SLUG') && DKMU_PLUGIN_SLUG === $plugin_slug ){
+        $download_url = "https://github.com/$githubUser/$githubRepo/archive/refs/heads/$githubBranch.zip";
+    }else{
+        $download_url = rest_url("dkm-plugins/v1/download-zip?plugin_slug=$plugin_slug");
+    }
 
     // Update-Informationen zurückgeben
     return new WP_REST_Response([
@@ -214,7 +218,6 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
         'slug'          => $plugin_slug,
         'tested'        => $plugin_headers['RequiresWP'] ?? '6.4',
         'requires'      => $plugin_headers['RequiresPHP'] ?? '7.0',
-        'all'           => $plugin_headers,
     ]);
 }
 
@@ -232,7 +235,8 @@ function dkmu_check_plugin_updates_from_server($transient){
     $current_version = $transient->checked[$plugin_file];
 
     // API-Request ausführen
-    $response = wp_remote_get(DKMU_UPDATE_SERVER_URL);
+    $update_server_url = dkmu_get_update_server_url() . DKMU_PLUGIN_SLUG;
+    $response = wp_remote_get($update_server_url);
 
     if (is_wp_error($response)) {
         return $transient; // Fehler, keine Updates
