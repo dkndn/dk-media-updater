@@ -4,7 +4,7 @@
 * Plugin Name: DK Media GmbH → Updater
 * Plugin URI: https://www.daniel-knoden.de/
 * Description: Acts as an proxy server to allow or disallow plugin updates.
-* Version: 0.9.4
+* Version: 0.9.5
 * Requires at least: 5.6
 * Requires PHP: 7.0
 * Author: Daniel Knoden
@@ -187,27 +187,26 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
     if (is_wp_error($zip_path)) {
         return new WP_REST_Response(['error' => $zip_path->get_error_message()], 500);
     }
-
-    // Proxy-Link erstellen
-    $proxy_url = add_query_arg(
-        ['plugin_slug' => $plugin_slug, 'version' => $latest_version],
-        rest_url('dkm-plugins/v1/download-zip')
-    );
-
+    
     // Generiere Download-URL für ZIP-Archiv des Branches
-    if( defined('DKMU_PLUGIN_SLUG') && DKMU_PLUGIN_SLUG === $plugin_slug ){
-        // Wenn das Plugin sich selbst updaten will, dann direkt von GitHub
-        $download_url = "https://github.com/$githubUser/$githubRepo/archive/refs/heads/$githubBranch.zip";
+    if( DKMU_PLUGIN_SLUG === $plugin_slug ){
+        // Wenn das Plugin sich selbst updaten will, dann direkt ohne Proxy von diesem dem Updater-Server
+        $download_url = $zip_path;
     }else{
         // Wenn Client-Plugins sich updaten wollen, dann über diese Proxy-URL
-        $download_url = rest_url("dkm-plugins/v1/download-zip?plugin_slug=$plugin_slug");
+        $download_url = add_query_arg(
+            [
+                'plugin_slug' => $plugin_slug,
+                'version' => $latest_version
+            ],
+            rest_url('dkm-plugins/v1/download-zip')
+        );
     }
 
     // Update-Informationen zurückgeben
     return new WP_REST_Response([
         'version'       => $plugin_headers['Version'],
-        // 'download_url'  => $download_url,
-        'download_url'  => $proxy_url,
+        'download_url'  => $download_url,
         'slug'          => $plugin_slug,
         'tested'        => $plugin_headers['RequiresWP'] ?? '6.4',
         'requires'      => $plugin_headers['RequiresPHP'] ?? '7.0',
@@ -221,17 +220,24 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
  *
  * @param [type] $plugin_slug
  * @param [type] $version
- * @return void
+ * @return WP_Error|string
  */
 function dkmu_prepare_plugin_version($plugin_slug, $version) {
     $upload_dir = wp_upload_dir();
     $this_plugin = DKMU_PLUGIN_SLUG;
-    $base_path = $upload_dir['basedir'] . "/{$this_plugin}/plugin-updates/{$plugin_slug}/{$version}/";
-    $zip_path = $base_path . "{$plugin_slug}.zip";
+    
+    $subfolder = "/{$this_plugin}/plugin-updates/{$plugin_slug}/{$version}/";
+    $zip_filename = "{$plugin_slug}.zip";
+    
+    $base_path = $upload_dir['basedir'] . $subfolder;
+    $base_url = $upload_dir['baseurl'] . $subfolder;
+
+    $zip_path = $base_path . $zip_filename;
+    $zip_url = $base_url . $zip_filename;
 
     // Falls die Datei bereits existiert, überspringen
     if (file_exists($zip_path)) {
-        return $zip_path;
+        return $zip_url;
     }
 
     wp_mkdir_p($base_path);
@@ -245,9 +251,9 @@ function dkmu_prepare_plugin_version($plugin_slug, $version) {
     $githubBranch   = $updater_config[$plugin_slug]['githubBranchName'];
 
     // GitHub ZIP-URL für den Branch
-    $zip_url = "https://api.github.com/repos/$githubUser/$githubRepo/zipball/$githubBranch";
+    $github_url = "https://api.github.com/repos/$githubUser/$githubRepo/zipball/$githubBranch";
 
-    $response = wp_remote_get($zip_url, [
+    $response = wp_remote_get($github_url, [
         'headers' => [
             'Authorization' => "token $access_token",
             'User-Agent' => 'Update-Server',
@@ -292,6 +298,7 @@ function dkmu_prepare_plugin_version($plugin_slug, $version) {
         return $zip_result;
     }
 
+    return $zip_url; // Check this!
     return $zip_path;
 }
 
