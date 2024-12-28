@@ -23,11 +23,7 @@ More help at our Website: https://www.daniel-knoden.de/.
 2. Install it from the WP backend
 
 == Frequently Asked Questions ==
-= Where do I find my WebinarJam API-Key? =
-On any WebinarJam Webinar click \"Advanced\" -> \"API custom integration\"
-
-== Screenshots ==
-1. Place WebinarJam API-Key on Settings Page screenshot-1.png.
-2. Select to which upcoming webinars the leads data should be submitted screenshot-2.png.
+= How do I configure the plugin? =
+Check out the internal company documentation for this plugin.
 
 == Changelog ==
