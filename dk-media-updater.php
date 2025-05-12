@@ -28,6 +28,16 @@ add_filter( 'pre_set_site_transient_update_plugins', 'dkmu_check_plugin_updates_
 add_filter( 'plugin_row_meta', 'dkmu_add_check_updates_link', 10, 2);
 add_action( 'admin_init', 'dkmu_handle_check_updates_action' );
 
+// Fügt einen Update-Header hinzu, wenn Updates von localhost gezogen werden
+// Ermöglicht, dass ein anderes Plugin über den Updater vom selben Host updaten kann.
+add_filter( 'http_request_args', function( $args, $url ) {
+    // Nur für unsere Update-API-URLs
+    if ( strpos( $url, rest_url() ) === 0 ) {
+        $args['headers']['X-DKMU-Internal'] = '1';
+    }
+    return $args;
+}, 10, 2 );
+
 // Endpoint registrieren
 add_action('rest_api_init', function () {
     // Checks if updates are available
@@ -187,9 +197,15 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
     if (is_wp_error($zip_path)) {
         return new WP_REST_Response(['error' => $zip_path->get_error_message()], 500);
     }
+
+    // Ermitteln, ob der Aufruf intern (Loopback) ist
+    $is_internal = $request->get_header( 'x-dkmu-internal' ) === '1';
+    error_log(json_encode([
+        '$is_internal' => $is_internal
+    ], JSON_PRETTY_PRINT));
     
     // Generiere Download-URL für ZIP-Archiv des Branches
-    if( DKMU_PLUGIN_SLUG === $plugin_slug ){
+    if( DKMU_PLUGIN_SLUG === $plugin_slug || $is_internal ){
         // Wenn das Plugin sich selbst updaten will, dann direkt ohne Proxy von diesem dem Updater-Server
         $download_url = $zip_path;
     }else{
