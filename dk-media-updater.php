@@ -4,7 +4,7 @@
 * Plugin Name: DK Media GmbH → Updater
 * Plugin URI: https://www.daniel-knoden.de/
 * Description: Acts as an proxy server to allow or disallow plugin updates.
-* Version: 0.9.5
+* Version: 0.9.7
 * Requires at least: 5.6
 * Requires PHP: 7.0
 * Author: Daniel Knoden
@@ -31,8 +31,9 @@ add_action( 'admin_init', 'dkmu_handle_check_updates_action' );
 // Fügt einen Update-Header hinzu, wenn Updates von localhost gezogen werden
 // Ermöglicht, dass ein anderes Plugin über den Updater vom selben Host updaten kann.
 add_filter( 'http_request_args', function( $args, $url ) {
-    // Nur für unsere Update-API-URLs
-    if ( strpos( $url, rest_url() ) === 0 ) {
+    // Nur für unsere Update-API-URLs (dkm-plugins/v1)
+    // rest_url() darf hier nicht verwendet werden – $wp_rewrite ist zu diesem Zeitpunkt noch null.
+    if ( strpos( $url, 'dkm-plugins/v1' ) !== false ) {
         $args['headers']['X-DKMU-Internal'] = '1';
     }
     return $args;
@@ -200,9 +201,9 @@ function dkmu_handle_update_request(WP_REST_Request $request) {
 
     // Ermitteln, ob der Aufruf intern (Loopback) ist
     $is_internal = $request->get_header( 'x-dkmu-internal' ) === '1';
-    error_log(json_encode([
-        '$is_internal' => $is_internal
-    ], JSON_PRETTY_PRINT));
+    // error_log(json_encode([
+    //     '$is_internal' => $is_internal
+    // ], JSON_PRETTY_PRINT));
     
     // Generiere Download-URL für ZIP-Archiv des Branches
     if( DKMU_PLUGIN_SLUG === $plugin_slug || $is_internal ){
@@ -365,7 +366,8 @@ function dkmu_create_zip($source, $destination) {
         if (!$file->isDir()) {
             $file_path = $file->getRealPath();
             $relative_path = substr($file_path, strlen($source) + 1);
-            $zip->addFile($file_path, $relative_path);
+            // Plugin-Ordner als Wurzel in der ZIP, sonst benennt WP den Ordner nach dem Download-Dateinamen
+            $zip->addFile($file_path, basename($source) . '/' . $relative_path);
         }
     }
 
